@@ -67,11 +67,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
             URL queryEndpoint = URI.create(config.uri() + "/query?q=" + URLEncoder.encode(createDatabaseQuery, "UTF-8")).toURL();
 
-            con = (HttpURLConnection) queryEndpoint.openConnection();
-            con.setConnectTimeout((int) config.connectTimeout().toMillis());
-            con.setReadTimeout((int) config.readTimeout().toMillis());
-            con.setRequestMethod(HttpMethod.POST);
-            authenticateRequest(con);
+            con = createConnectionForPostRequest(queryEndpoint);
 
             int status = con.getResponseCode();
 
@@ -117,14 +113,9 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     private void publishBatch(List<Meter> batch, URL influxEndpoint) throws IOException {
         HttpURLConnection con = null;
         try {
-            con = (HttpURLConnection) influxEndpoint.openConnection();
-            con.setConnectTimeout((int) config.connectTimeout().toMillis());
-            con.setReadTimeout((int) config.readTimeout().toMillis());
-            con.setRequestMethod(HttpMethod.POST);
+            con = createConnectionForPostRequest(influxEndpoint);
             con.setRequestProperty(HttpHeader.CONTENT_TYPE, MediaType.PLAIN_TEXT);
             con.setDoOutput(true);
-
-            authenticateRequest(con);
 
             writeBatch(batch, con);
 
@@ -342,4 +333,12 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         return TimeUnit.MILLISECONDS;
     }
 
+    private HttpURLConnection createConnectionForPostRequest(URL url) throws IOException {
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setConnectTimeout((int) config.connectTimeout().toMillis());
+        con.setReadTimeout((int) config.readTimeout().toMillis());
+        con.setRequestMethod(HttpMethod.POST);
+        authenticateRequest(con);
+        return con;
+    }
 }
