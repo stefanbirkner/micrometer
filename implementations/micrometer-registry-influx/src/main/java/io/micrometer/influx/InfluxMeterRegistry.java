@@ -128,16 +128,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
             authenticateRequest(con);
 
-            List<String> bodyLines = batch.stream()
-                    .flatMap(this::toLines)
-                    .collect(toList());
-
-            String body = String.join("", bodyLines);
-
-            try (OutputStream os = getOutputStream(con)) {
-                os.write(body.getBytes());
-                os.flush();
-            }
+            writeBatch(batch, con);
 
             int status = con.getResponseCode();
 
@@ -162,6 +153,19 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             String encoded = Base64.getEncoder().encodeToString((config.userName() + ":" +
                     config.password()).getBytes(StandardCharsets.UTF_8));
             con.setRequestProperty(HttpHeader.AUTHORIZATION, "Basic " + encoded);
+        }
+    }
+
+    private void writeBatch(List<Meter> batch, HttpURLConnection con) throws IOException {
+        List<String> bodyLines = batch.stream()
+            .flatMap(this::toLines)
+            .collect(toList());
+
+        String body = String.join("", bodyLines);
+
+        try (OutputStream os = getOutputStream(con)) {
+            os.write(body.getBytes());
+            os.flush();
         }
     }
 
