@@ -158,7 +158,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
     private void writeBatch(List<Meter> batch, HttpURLConnection con) throws IOException {
         List<String> bodyLines = batch.stream()
-            .flatMap(this::toLines)
+            .flatMap(this::toLinesSafe)
             .collect(toList());
 
         String body = String.join("", bodyLines);
@@ -176,6 +176,16 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             return new GZIPOutputStream(os);
         } else {
             return os;
+        }
+    }
+
+    private Stream<String> toLinesSafe(Meter m) {
+        try {
+            return toLines(m);
+        } catch (RuntimeException e) {
+            logger.warn("Did not send Meter " + m + " because it was not"
+                + " possible to create the line protocol for it.", e);
+            return Stream.empty();
         }
     }
 
