@@ -129,33 +129,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             authenticateRequest(con);
 
             List<String> bodyLines = batch.stream()
-                    .flatMap(m -> {
-                        if (m instanceof Timer) {
-                            return writeTimer((Timer) m);
-                        }
-                        if (m instanceof DistributionSummary) {
-                            return writeSummary((DistributionSummary) m);
-                        }
-                        if (m instanceof FunctionTimer) {
-                            return writeTimer((FunctionTimer) m);
-                        }
-                        if (m instanceof TimeGauge) {
-                            return writeGauge(m.getId(), ((TimeGauge) m).value(getBaseTimeUnit()));
-                        }
-                        if (m instanceof Gauge) {
-                            return writeGauge(m.getId(), ((Gauge) m).value());
-                        }
-                        if (m instanceof FunctionCounter) {
-                            return writeCounter(m.getId(), ((FunctionCounter) m).count());
-                        }
-                        if (m instanceof Counter) {
-                            return writeCounter(m.getId(), ((Counter) m).count());
-                        }
-                        if (m instanceof LongTaskTimer) {
-                            return writeLongTaskTimer((LongTaskTimer) m);
-                        }
-                        return writeMeter(m);
-                    })
+                    .flatMap(this::toLines)
                     .collect(toList());
 
             String body = String.join("", bodyLines);
@@ -199,6 +173,34 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         } else {
             return os;
         }
+    }
+
+    private Stream<String> toLines(Meter m) {
+        if (m instanceof Timer) {
+            return writeTimer((Timer) m);
+        }
+        if (m instanceof DistributionSummary) {
+            return writeSummary((DistributionSummary) m);
+        }
+        if (m instanceof FunctionTimer) {
+            return writeTimer((FunctionTimer) m);
+        }
+        if (m instanceof TimeGauge) {
+            return writeGauge(m.getId(), ((TimeGauge) m).value(getBaseTimeUnit()));
+        }
+        if (m instanceof Gauge) {
+            return writeGauge(m.getId(), ((Gauge) m).value());
+        }
+        if (m instanceof FunctionCounter) {
+            return writeCounter(m.getId(), ((FunctionCounter) m).count());
+        }
+        if (m instanceof Counter) {
+            return writeCounter(m.getId(), ((Counter) m).count());
+        }
+        if (m instanceof LongTaskTimer) {
+            return writeLongTaskTimer((LongTaskTimer) m);
+        }
+        return writeMeter(m);
     }
 
     private void quietlyCloseUrlConnection(@Nullable HttpURLConnection con) {
