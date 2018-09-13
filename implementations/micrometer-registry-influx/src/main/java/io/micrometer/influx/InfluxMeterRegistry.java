@@ -160,9 +160,6 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
             String body = String.join("\n", bodyLines);
 
-            if (config.compressed())
-                con.setRequestProperty(HttpHeader.CONTENT_ENCODING, HttpContentCoding.GZIP);
-
             try (OutputStream os = getOutputStream(con)) {
                 os.write(body.getBytes());
                 os.flush();
@@ -197,6 +194,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     private OutputStream getOutputStream(HttpURLConnection con) throws IOException {
         OutputStream os = con.getOutputStream();
         if (config.compressed()) {
+            con.setRequestProperty(HttpHeader.CONTENT_ENCODING, HttpContentCoding.GZIP);
             return new GZIPOutputStream(os);
         } else {
             return os;
