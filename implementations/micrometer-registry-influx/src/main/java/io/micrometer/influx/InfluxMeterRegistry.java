@@ -27,7 +27,6 @@ import java.io.OutputStream;
 import java.net.*;
 import java.util.Base64;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -177,46 +176,33 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
     private void writeMeter(OutputStream os, Meter meter) throws IOException {
         try {
-            Optional<String> line = toLine(meter);
-            if (line.isPresent()) {
-                writeLine(os, line.get());
-            }
+            tryWriteMeter(os, meter);
         } catch (RuntimeException e) {
             logger.warn("Did not send Meter " + meter + " because it was not"
                 + " possible to create the line protocol for it.", e);
         }
     }
 
-    private Optional<String> toLine(Meter m) {
+    private void tryWriteMeter(OutputStream os, Meter m) throws IOException {
         if (m instanceof Timer) {
-            return writeTimer((Timer) m);
+            writeTimer(os, (Timer) m);
+        } else if (m instanceof DistributionSummary) {
+            writeSummary(os, (DistributionSummary) m);
+        } else if (m instanceof FunctionTimer) {
+            writeTimer(os, (FunctionTimer) m);
+        } else if (m instanceof TimeGauge) {
+            writeGauge(os, m.getId(), ((TimeGauge) m).value(getBaseTimeUnit()));
+        } else if (m instanceof Gauge) {
+            writeGauge(os, m.getId(), ((Gauge) m).value());
+        } else if (m instanceof FunctionCounter) {
+            writeCounter(os, m.getId(), ((FunctionCounter) m).count());
+        } else if (m instanceof Counter) {
+            writeCounter(os, m.getId(), ((Counter) m).count());
+        } else if (m instanceof LongTaskTimer) {
+            writeLongTaskTimer(os, (LongTaskTimer) m);
+        } else {
+            writeAribtraryMeter(os, m);
         }
-        if (m instanceof DistributionSummary) {
-            return writeSummary((DistributionSummary) m);
-        }
-        if (m instanceof FunctionTimer) {
-            return writeTimer((FunctionTimer) m);
-        }
-        if (m instanceof TimeGauge) {
-            return writeGauge(m.getId(), ((TimeGauge) m).value(getBaseTimeUnit()));
-        }
-        if (m instanceof Gauge) {
-            return writeGauge(m.getId(), ((Gauge) m).value());
-        }
-        if (m instanceof FunctionCounter) {
-            return writeCounter(m.getId(), ((FunctionCounter) m).count());
-        }
-        if (m instanceof Counter) {
-            return writeCounter(m.getId(), ((Counter) m).count());
-        }
-        if (m instanceof LongTaskTimer) {
-            return writeLongTaskTimer((LongTaskTimer) m);
-        }
-        return writeMeter(m);
-    }
-
-    private void writeLine(OutputStream os, String line) throws IOException {
-        os.write(line.getBytes(UTF_8));
     }
 
     private void quietlyCloseUrlConnection(@Nullable HttpURLConnection con) {
@@ -243,7 +229,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         }
     }
 
-    private Optional<String> writeMeter(Meter m) {
+    private void writeAribtraryMeter(OutputStream os, Meter m) throws IOException {
         Stream.Builder<Field> fields = Stream.builder();
 
         for (Measurement measurement : m.measure()) {
@@ -252,37 +238,38 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             fields.add(new Field(fieldKey, measurement.getValue()));
         }
 
-        return Optional.of(influxLineProtocol(m.getId(), "unknown", fields.build()));
+        writeLine(os, m.getId(), "unknown", fields.build());
     }
 
-    private Optional<String> writeLongTaskTimer(LongTaskTimer timer) {
+    private void writeLongTaskTimer(OutputStream os, LongTaskTimer timer) throws IOException {
         Stream<Field> fields = Stream.of(
                 new Field("active_tasks", timer.activeTasks()),
                 new Field("duration", timer.duration(getBaseTimeUnit()))
         );
-        return Optional.of(influxLineProtocol(timer.getId(), "long_task_timer", fields));
+        writeLine(os, timer.getId(), "long_task_timer", fields);
     }
 
-    private Optional<String> writeCounter(Meter.Id id, double count) {
-        return Optional.of(influxLineProtocol(id, "counter", Stream.of(new Field("value", count))));
+    private void writeCounter(OutputStream os, Meter.Id id, double count) throws IOException {
+        writeLine(os, id, "counter", Stream.of(new Field("value", count)));
     }
 
-    private Optional<String> writeGauge(Meter.Id id, Double value) {
-        return value.isNaN() ? Optional.empty() :
-                Optional.of(influxLineProtocol(id, "gauge", Stream.of(new Field("value", value))));
+    private void writeGauge(OutputStream os, Meter.Id id, Double value) throws IOException {
+        if (!value.isNaN()) {
+            writeLine(os, id, "gauge", Stream.of(new Field("value", value)));
+        }
     }
 
-    private Optional<String> writeTimer(FunctionTimer timer) {
+    private void writeTimer(OutputStream os, FunctionTimer timer) throws IOException {
         Stream<Field> fields = Stream.of(
                 new Field("sum", timer.totalTime(getBaseTimeUnit())),
                 new Field("count", timer.count()),
                 new Field("mean", timer.mean(getBaseTimeUnit()))
         );
 
-        return Optional.of(influxLineProtocol(timer.getId(), "histogram", fields));
+        writeLine(os, timer.getId(), "histogram", fields);
     }
 
-    private Optional<String> writeTimer(Timer timer) {
+    private void writeTimer(OutputStream os, Timer timer) throws IOException {
         final Stream<Field> fields = Stream.of(
                 new Field("sum", timer.totalTime(getBaseTimeUnit())),
                 new Field("count", timer.count()),
@@ -290,10 +277,10 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
                 new Field("upper", timer.max(getBaseTimeUnit()))
         );
 
-        return Optional.of(influxLineProtocol(timer.getId(), "histogram", fields));
+        writeLine(os, timer.getId(), "histogram", fields);
     }
 
-    private Optional<String> writeSummary(DistributionSummary summary) {
+    private void writeSummary(OutputStream os, DistributionSummary summary) throws IOException {
         final Stream<Field> fields = Stream.of(
                 new Field("sum", summary.totalAmount()),
                 new Field("count", summary.count()),
@@ -301,19 +288,53 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
                 new Field("upper", summary.max())
         );
 
-        return Optional.of(influxLineProtocol(summary.getId(), "histogram", fields));
+        writeLine(os, summary.getId(), "histogram", fields);
     }
 
-    private String influxLineProtocol(Meter.Id id, String metricType, Stream<Field> fields) {
-        String tags = getConventionTags(id).stream()
-                .map(t -> "," + t.getKey() + "=" + t.getValue())
-                .collect(joining(""));
+    private void writeLine(OutputStream os, Meter.Id id, String metricType,
+            Stream<Field> fields) throws IOException {
+        writeName(os, id);
+        writeTags(os, id);
+        writeType(os, metricType);
+        os.write(' ');
+        writeFields(os, fields);
+        os.write(' ');
+        writeTimestamp(os);
+        os.write('\n');
+    }
 
-        return getConventionName(id)
-                + tags + ",metric_type=" + metricType + " "
-                + fields.map(Field::toString).collect(joining(","))
-                + " " + clock.wallTime()
-                + "\n";
+    private void writeName(OutputStream os, Meter.Id id) throws IOException {
+        write(os, getConventionName(id));
+    }
+
+    private void writeTags(OutputStream os, Meter.Id id) throws IOException {
+        for (Tag tag: getConventionTags(id)) {
+            writeTag(os, tag.getKey(), tag.getValue());
+        }
+    }
+
+    private void writeType(OutputStream os, String metricType) throws IOException {
+        writeTag(os, "metric_type", metricType);
+    }
+
+    private void writeTag(OutputStream os, String key, String value) throws IOException {
+        os.write(',');
+        write(os, key);
+        os.write('=');
+        write(os, value);
+    }
+
+    private void writeFields(OutputStream os, Stream<Field> fields) throws IOException {
+        write(os, fields.map(Field::toString).collect(joining(",")));
+    }
+
+    private void writeTimestamp(OutputStream os) throws IOException {
+        String timestamp = Long.toString(clock.wallTime());
+        write(os, timestamp);
+    }
+
+    private void write(OutputStream os, String text) throws IOException {
+        os.write(text.getBytes(UTF_8));
     }
 
     @Override
