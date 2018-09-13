@@ -161,10 +161,8 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             .flatMap(this::toLinesSafe)
             .collect(toList());
 
-        String body = String.join("", bodyLines);
-
         try (OutputStream os = getOutputStream(con)) {
-            os.write(body.getBytes());
+            writeLines(os, bodyLines);
             os.flush();
         }
     }
@@ -215,6 +213,11 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             return writeLongTaskTimer((LongTaskTimer) m);
         }
         return writeMeter(m);
+    }
+
+    private void writeLines(OutputStream os, List<String> lines) throws IOException {
+        String body = String.join("", lines);
+        os.write(body.getBytes());
     }
 
     private void quietlyCloseUrlConnection(@Nullable HttpURLConnection con) {
