@@ -25,18 +25,17 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toList;
 
 /**
  * @author Jon Schneider
@@ -158,12 +157,10 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     }
 
     private void writeBatch(List<Meter> batch, HttpURLConnection con) throws IOException {
-        List<String> bodyLines = batch.stream()
-            .flatMap(this::toLinesSafe)
-            .collect(toList());
-
         try (OutputStream os = getOutputStream(con)) {
-            writeLines(os, bodyLines);
+            for (Meter meter: batch) {
+                writeMeter(os, meter);
+            }
             os.flush();
         }
     }
@@ -175,6 +172,13 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             return new GZIPOutputStream(os);
         } else {
             return os;
+        }
+    }
+
+    private void writeMeter(OutputStream os, Meter meter) throws IOException {
+        Stream<String> lines = toLinesSafe(meter);
+        for (String line: lines.collect(Collectors.toList())) {
+            writeLine(os, line);
         }
     }
 
@@ -216,9 +220,8 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         return writeMeter(m);
     }
 
-    private void writeLines(OutputStream os, List<String> lines) throws IOException {
-        String body = String.join("", lines);
-        os.write(body.getBytes(UTF_8));
+    private void writeLine(OutputStream os, String line) throws IOException {
+        os.write(line.getBytes(UTF_8));
     }
 
     private void quietlyCloseUrlConnection(@Nullable HttpURLConnection con) {
