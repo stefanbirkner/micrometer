@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 
@@ -151,7 +152,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     private void authenticateRequest(HttpURLConnection con) {
         if (config.userName() != null && config.password() != null) {
             String encoded = Base64.getEncoder().encodeToString((config.userName() + ":" +
-                    config.password()).getBytes(StandardCharsets.UTF_8));
+                    config.password()).getBytes(UTF_8));
             con.setRequestProperty(HttpHeader.AUTHORIZATION, "Basic " + encoded);
         }
     }
@@ -217,7 +218,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
 
     private void writeLines(OutputStream os, List<String> lines) throws IOException {
         String body = String.join("", lines);
-        os.write(body.getBytes());
+        os.write(body.getBytes(UTF_8));
     }
 
     private void quietlyCloseUrlConnection(@Nullable HttpURLConnection con) {
