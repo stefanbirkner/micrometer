@@ -158,7 +158,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
                     })
                     .collect(toList());
 
-            String body = String.join("\n", bodyLines);
+            String body = String.join("", bodyLines);
 
             try (OutputStream os = getOutputStream(con)) {
                 os.write(body.getBytes());
@@ -294,7 +294,8 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         return getConventionName(id)
                 + tags + ",metric_type=" + metricType + " "
                 + fields.map(Field::toString).collect(joining(","))
-                + " " + clock.wallTime();
+                + " " + clock.wallTime()
+                + "\n";
     }
 
     @Override
