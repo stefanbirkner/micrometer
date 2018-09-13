@@ -163,15 +163,8 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             if (config.compressed())
                 con.setRequestProperty(HttpHeader.CONTENT_ENCODING, HttpContentCoding.GZIP);
 
-            try (OutputStream os = con.getOutputStream()) {
-                if (config.compressed()) {
-                    try (GZIPOutputStream gz = new GZIPOutputStream(os)) {
-                        gz.write(body.getBytes());
-                        gz.flush();
-                    }
-                } else {
-                    os.write(body.getBytes());
-                }
+            try (OutputStream os = getOutputStream(con)) {
+                os.write(body.getBytes());
                 os.flush();
             }
 
@@ -198,6 +191,15 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             String encoded = Base64.getEncoder().encodeToString((config.userName() + ":" +
                     config.password()).getBytes(StandardCharsets.UTF_8));
             con.setRequestProperty(HttpHeader.AUTHORIZATION, "Basic " + encoded);
+        }
+    }
+
+    private OutputStream getOutputStream(HttpURLConnection con) throws IOException {
+        OutputStream os = con.getOutputStream();
+        if (config.compressed()) {
+            return new GZIPOutputStream(os);
+        } else {
+            return os;
         }
     }
 
