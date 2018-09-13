@@ -25,16 +25,15 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.*;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.stream.Collectors.joining;
 
 /**
  * @author Jon Schneider
@@ -230,7 +229,7 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     }
 
     private void writeAribtraryMeter(OutputStream os, Meter m) throws IOException {
-        Stream.Builder<Field> fields = Stream.builder();
+        List<Field> fields = new ArrayList<>();
 
         for (Measurement measurement : m.measure()) {
             String fieldKey = measurement.getStatistic().toString()
@@ -238,61 +237,54 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
             fields.add(new Field(fieldKey, measurement.getValue()));
         }
 
-        writeLine(os, m.getId(), "unknown", fields.build());
+        writeLine(os, m.getId(), "unknown", fields.toArray(new Field[fields.size()]));
     }
 
     private void writeLongTaskTimer(OutputStream os, LongTaskTimer timer) throws IOException {
-        Stream<Field> fields = Stream.of(
-                new Field("active_tasks", timer.activeTasks()),
-                new Field("duration", timer.duration(getBaseTimeUnit()))
+        writeLine(os, timer.getId(), "long_task_timer",
+            new Field("active_tasks", timer.activeTasks()),
+            new Field("duration", timer.duration(getBaseTimeUnit()))
         );
-        writeLine(os, timer.getId(), "long_task_timer", fields);
     }
 
     private void writeCounter(OutputStream os, Meter.Id id, double count) throws IOException {
-        writeLine(os, id, "counter", Stream.of(new Field("value", count)));
+        writeLine(os, id, "counter", new Field("value", count));
     }
 
     private void writeGauge(OutputStream os, Meter.Id id, Double value) throws IOException {
         if (!value.isNaN()) {
-            writeLine(os, id, "gauge", Stream.of(new Field("value", value)));
+            writeLine(os, id, "gauge", new Field("value", value));
         }
     }
 
     private void writeTimer(OutputStream os, FunctionTimer timer) throws IOException {
-        Stream<Field> fields = Stream.of(
-                new Field("sum", timer.totalTime(getBaseTimeUnit())),
-                new Field("count", timer.count()),
-                new Field("mean", timer.mean(getBaseTimeUnit()))
+        writeLine(os, timer.getId(), "histogram",
+            new Field("sum", timer.totalTime(getBaseTimeUnit())),
+            new Field("count", timer.count()),
+            new Field("mean", timer.mean(getBaseTimeUnit()))
         );
-
-        writeLine(os, timer.getId(), "histogram", fields);
     }
 
     private void writeTimer(OutputStream os, Timer timer) throws IOException {
-        final Stream<Field> fields = Stream.of(
-                new Field("sum", timer.totalTime(getBaseTimeUnit())),
-                new Field("count", timer.count()),
-                new Field("mean", timer.mean(getBaseTimeUnit())),
-                new Field("upper", timer.max(getBaseTimeUnit()))
+        writeLine(os, timer.getId(), "histogram",
+            new Field("sum", timer.totalTime(getBaseTimeUnit())),
+            new Field("count", timer.count()),
+            new Field("mean", timer.mean(getBaseTimeUnit())),
+            new Field("upper", timer.max(getBaseTimeUnit()))
         );
-
-        writeLine(os, timer.getId(), "histogram", fields);
     }
 
     private void writeSummary(OutputStream os, DistributionSummary summary) throws IOException {
-        final Stream<Field> fields = Stream.of(
-                new Field("sum", summary.totalAmount()),
-                new Field("count", summary.count()),
-                new Field("mean", summary.mean()),
-                new Field("upper", summary.max())
+        writeLine(os, summary.getId(), "histogram",
+            new Field("sum", summary.totalAmount()),
+            new Field("count", summary.count()),
+            new Field("mean", summary.mean()),
+            new Field("upper", summary.max())
         );
-
-        writeLine(os, summary.getId(), "histogram", fields);
     }
 
     private void writeLine(OutputStream os, Meter.Id id, String metricType,
-            Stream<Field> fields) throws IOException {
+            Field... fields) throws IOException {
         writeName(os, id);
         writeTags(os, id);
         writeType(os, metricType);
@@ -324,8 +316,16 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
         write(os, value);
     }
 
-    private void writeFields(OutputStream os, Stream<Field> fields) throws IOException {
-        write(os, fields.map(Field::toString).collect(joining(",")));
+    private void writeFields(OutputStream os, Field... fields) throws IOException {
+        boolean firstFieldWritten = false;
+        for (Field field: fields) {
+            if (firstFieldWritten) {
+                os.write(',');
+            } else {
+                firstFieldWritten = true;
+            }
+            write(os, field.toString());
+        }
     }
 
     private void writeTimestamp(OutputStream os) throws IOException {
