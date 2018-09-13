@@ -176,19 +176,14 @@ public class InfluxMeterRegistry extends StepMeterRegistry {
     }
 
     private void writeMeter(OutputStream os, Meter meter) throws IOException {
-        Optional<String> line = toLineSafe(meter);
-        if (line.isPresent()) {
-            writeLine(os, line.get());
-        }
-    }
-
-    private Optional<String> toLineSafe(Meter m) {
         try {
-            return toLine(m);
+            Optional<String> line = toLine(meter);
+            if (line.isPresent()) {
+                writeLine(os, line.get());
+            }
         } catch (RuntimeException e) {
-            logger.warn("Did not send Meter " + m + " because it was not"
+            logger.warn("Did not send Meter " + meter + " because it was not"
                 + " possible to create the line protocol for it.", e);
-            return Optional.empty();
         }
     }
 
